@@ -1,6 +1,8 @@
+#include "minishell/core/shell.h"
 #include <iostream>
-using namespace std;  
+
 int main() {
-    cout << "minishell OK \n" ;
-    return 0; 
+    std::cout << "minishell OK" << std::endl;
+    minishell::Shell shell;
+    return shell.run();
 }

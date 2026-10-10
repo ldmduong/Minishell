@@ -19,6 +19,8 @@
 #include "minishell/core/parser.h"
 #include "minishell/builtins/system/system_info.h"
 #include "minishell/builtins/system/process.h"
+#include "minishell/builtins/system/threads.h"
+
 
 namespace minishell {
 
@@ -48,6 +50,7 @@ Shell::Shell() {
     builtins::register_alias(registry_);
     builtins::register_system_info(registry_);
     builtins::register_process(registry_);
+    builtins::register_threads(registry_);
 }
 
 std::string Shell::prompt() const {

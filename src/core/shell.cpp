@@ -11,7 +11,7 @@
 #include "minishell/core/parser.h"
 #include "minishell/builtins/core/history.h"
 #include "minishell/builtins/core/directory.h"
-
+#include "minishell/builtins/core/file.h"
 
 
 
@@ -26,6 +26,7 @@ Shell::Shell() {
     builtins::register_help(registry_);
     builtins::register_history(registry_);
     builtins::register_directory(registry_);
+    builtins::register_file(registry_);
 }
 
 std::string Shell::prompt() const {

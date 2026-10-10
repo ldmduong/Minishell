@@ -12,7 +12,7 @@
 #include "minishell/builtins/core/history.h"
 #include "minishell/builtins/core/directory.h"
 #include "minishell/builtins/core/file.h"
-
+#include "minishell/builtins/core/environment.h"
 
 
 
@@ -27,6 +27,7 @@ Shell::Shell() {
     builtins::register_history(registry_);
     builtins::register_directory(registry_);
     builtins::register_file(registry_);
+    builtins::register_environment(registry_);
 }
 
 std::string Shell::prompt() const {

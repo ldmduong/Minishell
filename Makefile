@@ -11,5 +11,8 @@ run: all
 
 clean:
 	rm -rf $(BUILD_DIR) install
+	
+clean-files:
+	find $(BUILD_DIR) install -type f -delete 2>/dev/null || true
 
 rebuild: clean all

@@ -18,7 +18,7 @@
 #include "minishell/core/line_editor.h"
 #include "minishell/core/parser.h"
 #include "minishell/builtins/system/system_info.h"
-
+#include "minishell/builtins/system/process.h"
 
 namespace minishell {
 
@@ -47,6 +47,7 @@ Shell::Shell() {
     builtins::register_environment(registry_);
     builtins::register_alias(registry_);
     builtins::register_system_info(registry_);
+    builtins::register_process(registry_);
 }
 
 std::string Shell::prompt() const {

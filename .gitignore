@@ -1,0 +1,45 @@
+# ===== Thư mục do CMake tạo ra =====
+# Chứa file build và file chạy minishell
+build/
+# Thư mục cài đặt (cmake --install)
+install/
+# Thư mục đầu ra khác (một số cấu hình IDE dùng)
+out/
+
+# ===== Cấu hình editor / IDE =====
+# Thiết lập riêng của VS Code
+.vscode/
+# Bộ nhớ đệm của clangd (gợi ý code)
+.cache/
+
+# ===== File biên dịch trung gian và thư viện =====
+# File đối tượng (Linux)
+*.o
+# File đối tượng (Windows)
+*.obj
+# Thư viện tĩnh
+*.a
+# Thư viện động
+*.so
+# File chạy mặc định của g++ khi không đặt tên
+*.out
+# Precompiled header
+*.gch
+# File chạy của Windows
+*.exe
+
+# ===== Log =====
+*.log
+
+# ===== File sinh ra khi chương trình crash / debug =====
+
+# File lõi do Valgrind tạo ra
+vgcore.*
+
+# ===== File sinh ra bởi công cụ =====
+# CMake xuất ra cho VS Code / clangd
+compile_commands.json
+# File rác Windows tạo khi chép file sang WSL
+*:Zone.Identifier
+
+# test 

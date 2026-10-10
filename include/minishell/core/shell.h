@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <string>
 #include <vector>
 
@@ -12,10 +13,9 @@ public:
 
     int run();
 
-    // Phân tích và chạy một dòng lệnh, trả về mã thoát.
+    // Phân tích, thay alias, rồi chạy một dòng lệnh. Trả về mã thoát.
     int execute_line(const std::string& line);
 
-    // Yêu cầu shell thoát sau lệnh hiện tại (dùng cho lệnh exit).
     void request_exit(int code = 0) {
         running_ = false;
         exit_code_ = code;
@@ -26,6 +26,10 @@ public:
     Registry& registry() { return registry_; }
     const Registry& registry() const { return registry_; }
 
+    // Bảng alias: tên -> lệnh thay thế
+    std::map<std::string, std::string>& aliases() { return aliases_; }
+    const std::map<std::string, std::string>& aliases() const { return aliases_; }
+
     std::string prev_dir;  // thư mục trước đó, dùng cho "cd -"
 
 private:
@@ -33,6 +37,7 @@ private:
     bool running_ = true;
     int exit_code_ = 0;
     std::vector<std::string> history_;
+    std::map<std::string, std::string> aliases_;
     Registry registry_;
 };
 

@@ -9,6 +9,12 @@
 #include "minishell/core/executor.h"
 #include "minishell/core/line_editor.h"
 #include "minishell/core/parser.h"
+#include "minishell/builtins/core/history.h"
+
+
+
+
+
 
 namespace minishell {
 
@@ -18,6 +24,7 @@ Shell::Shell() {
     builtins::register_navigation(registry_);
     builtins::register_session(registry_);
     builtins::register_help(registry_);
+    builtins::register_history(registry_);
 }
 
 std::string Shell::prompt() const {

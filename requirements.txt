@@ -1,0 +1,8 @@
+# Gói apt cần cài trên Ubuntu / WSL.
+# Cài bằng lệnh: sudo apt install -y $(grep -v '^#' requirements.txt)
+build-essential
+cmake
+gdb
+valgrind
+procps
+git

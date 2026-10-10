@@ -10,7 +10,7 @@
 #include "minishell/core/line_editor.h"
 #include "minishell/core/parser.h"
 #include "minishell/builtins/core/history.h"
-
+#include "minishell/builtins/core/directory.h"
 
 
 
@@ -25,6 +25,7 @@ Shell::Shell() {
     builtins::register_session(registry_);
     builtins::register_help(registry_);
     builtins::register_history(registry_);
+    builtins::register_directory(registry_);
 }
 
 std::string Shell::prompt() const {

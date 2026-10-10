@@ -3,7 +3,7 @@
 
 namespace minishell::builtins {
 
-// Đăng ký: threads (liệt kê luồng hoặc chạy demo).
+// Đăng ký: threads (xem luồng của tiến trình, hoặc chạy demo luồng).
 void register_threads(Registry& registry);
 
 }  // namespace minishell::builtins

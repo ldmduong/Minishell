@@ -196,4 +196,4 @@ void register_scheduler(Registry& registry) {
                  " | schedule list | schedule cancel ID");
 }
 
-}  // namespace minishell::builtins
+}  // namespace minishell:

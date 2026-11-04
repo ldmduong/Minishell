@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "minishell/core/parser.h"
 #include "minishell/core/registry.h"
 
 namespace minishell {
@@ -14,7 +15,9 @@ public:
 
   int run();
   int execute_line(const std::string &line);
+  int execute_pipeline(Pipeline pipeline);
   void request_exit(int code = 0);
+  bool running() const { return running_; }
 
   const std::vector<std::string> &history() const { return history_; }
 

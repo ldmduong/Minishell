@@ -20,6 +20,9 @@ Một **shell mini** viết bằng C++17 cho môn **Hệ điều hành (ET4291)*
 - **Biến môi trường**: `env`, `export`, `unset`.
 - **Quản lý tiến trình**: xem danh sách, gửi tín hiệu, tạm dừng và tiếp tục.
 - **Xem luồng** của một tiến trình và **chạy thử luồng** với `std::thread`.
+- **Script**: chạy tệp lệnh, vòng lặp `for`, điều kiện `if` và hàm.
+- **Lập lịch** lệnh ngoài chạy trễ, liệt kê và hủy lịch.
+- **Tiện ích**: đổi cơ số, lưu bookmark thư mục, màu chữ và hiệu ứng terminal.
 
 ---
 
@@ -35,6 +38,9 @@ Gõ `help` để xem danh sách đầy đủ theo nhóm.
 | **Môi trường & alias** | `env`, `export`, `unset`, `alias`, `unalias` | Biến môi trường và bí danh lệnh |
 | **Hệ thống** | `ram`, `cpu`, `uptime` | Thông tin RAM, CPU, thời gian hoạt động |
 | **Tiến trình & luồng** | `procs`, `kill [-SIG] PID`, `stop PID`, `resume PID`, `threads PID`, `threads demo N` | Quản lý tiến trình và luồng |
+| **Script** | `run_script TỆP [ĐỐI_SỐ]...` | Chạy script có `if`, `for`, `function` và `call` |
+| **Lập lịch** | `schedule GIÂY LỆNH`, `schedule list`, `schedule cancel PID` | Chạy trễ lệnh ngoài |
+| **Tiện ích** | `base`, `bookmark`, `color`, `dance` | Đổi cơ số, lưu thư mục, màu và hiệu ứng |
 
 ---
 
@@ -49,9 +55,40 @@ minishell$ cat a.txt | wc -c
 minishell$ ram
 minishell$ threads demo 3
 minishell$ alias ll='ls -l'
+minishell$ base FF 16 2
+minishell$ bookmark add project
+minishell$ schedule 5 echo "chạy sau 5 giây"
 minishell$ history
 minishell$ exit
 ```
+
+### Script
+
+Tạo tệp `demo.ms`:
+
+```text
+function greet
+  echo "Xin chào $1"
+endfunction
+
+for item in mot hai ba
+  echo "Mục: $item"
+endfor
+
+if 2 -gt 1
+  call greet minishell
+else
+  echo "Điều kiện sai"
+endif
+```
+
+Chạy bằng `run_script demo.ms`. Script hỗ trợ so sánh `==`, `!=`, `-eq`,
+`-ne`, `-gt`, `-ge`, `-lt`, `-le` và kiểm tra tệp `-e`, `-f`, `-d`.
+Biến môi trường và đối số `$1`, `$2`, `$@` có thể dùng trong script.
+
+`schedule` chỉ chạy **lệnh ngoài**, không chạy builtin, pipeline hoặc nền; ví dụ:
+`schedule 5 echo xong`, `schedule list`, `schedule cancel PID`.
+Bookmark được lưu trong `~/.minishell_bookmarks`.
 
 ---
 
@@ -124,7 +161,7 @@ minishell/
 │   ├── core/              # shell, parser, executor, line editor, registry
 │   └── builtins/
 │       ├── core/          # cd, pwd, exit, clear, help, history, file, env, alias...
-│       ├── scripting/     # vị trí dành cho lệnh script trong kế hoạch
+│       ├── scripting/     # script và lập lịch
 │       ├── system/        # ram, cpu, uptime, procs, kill, threads
 │       └── extras/        # tiện ích mở rộng (kế hoạch)
 ├── src/                   # mã nguồn tương ứng với include/
@@ -139,6 +176,7 @@ minishell/
 
 - **Registry**: mỗi lệnh tích hợp được đăng ký bằng tên, hàm xử lý và chuỗi trợ giúp. Shell không cần biết chi tiết của từng lệnh.
 - **Executor**: lệnh đơn chạy trong shell khi cần, còn pipeline và lệnh ngoài chạy trong tiến trình con qua `fork`, `pipe`, `dup2` và `execvp`.
+- **Script**: chạy tuần tự các dòng trong tệp; `if`, `for` và hàm được xử lý trong `run_script`.
 - **Tín hiệu**: shell bỏ qua `SIGINT`, còn tiến trình con khôi phục hành vi mặc định để Ctrl+C chỉ dừng lệnh đang chạy.
 - **Line editor**: chuyển terminal sang chế độ raw bằng `termios`, đọc từng byte để xử lý mũi tên và chỉnh sửa dòng.
 - **Thông tin hệ thống**: đọc trực tiếp từ `/proc` (`meminfo`, `cpuinfo`, `uptime`, `<pid>/stat`, `<pid>/task`).
@@ -147,9 +185,6 @@ minishell/
 
 ## 🗺️ Kế hoạch tiếp theo
 
-- [ ] Nhóm lệnh script: `run_script`, điều kiện, vòng lặp, hàm
-- [ ] Nhóm tiện ích mở rộng: chuyển đổi cơ số, bookmark, đổi màu, hiệu ứng
-- [ ] Bộ kiểm thử đơn vị và kịch bản tự động
 - [ ] CI với GitHub Actions (build, test, valgrind)
 - [ ] Job control: `jobs`, `fg`, `bg`
 

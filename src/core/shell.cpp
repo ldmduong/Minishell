@@ -2,6 +2,7 @@
 
 #include <csignal>
 #include <iostream>
+#include <utility>
 
 #include "minishell/builtins/core/alias.h"
 #include "minishell/builtins/core/directory.h"
@@ -11,6 +12,12 @@
 #include "minishell/builtins/core/history.h"
 #include "minishell/builtins/core/navigation.h"
 #include "minishell/builtins/core/session.h"
+#include "minishell/builtins/extras/base_conversion.h"
+#include "minishell/builtins/extras/bookmark.h"
+#include "minishell/builtins/extras/dancing.h"
+#include "minishell/builtins/extras/set_color.h"
+#include "minishell/builtins/scripting/run_script.h"
+#include "minishell/builtins/scripting/scheduler.h"
 #include "minishell/builtins/system/process.h"
 #include "minishell/builtins/system/system_info.h"
 #include "minishell/builtins/system/threads.h"
@@ -34,6 +41,12 @@ Shell::Shell() {
   builtins::register_system_info(registry_);
   builtins::register_process(registry_);
   builtins::register_threads(registry_);
+  builtins::register_scripting(registry_);
+  builtins::register_scheduler(registry_);
+  builtins::register_base_conversion(registry_);
+  builtins::register_bookmark(registry_);
+  builtins::register_set_color(registry_);
+  builtins::register_dancing(registry_);
 }
 
 std::string Shell::prompt() const { return "minishell$ "; }
@@ -46,6 +59,11 @@ int Shell::execute_line(const std::string &line) {
     return 2;
   }
 
+  return execute_pipeline(std::move(pipeline));
+}
+
+int Shell::execute_pipeline(Pipeline pipeline) {
+  std::string error;
   for (Command &command : pipeline.commands) {
     if (command.args.empty())
       continue;

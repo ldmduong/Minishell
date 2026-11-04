@@ -21,6 +21,9 @@ const std::vector<Group> groups = {
     {"Môi trường & alias", {"env", "export", "unset", "alias", "unalias"}},
     {"Hệ thống", {"ram", "cpu", "uptime"}},
     {"Tiến trình & luồng", {"procs", "kill", "stop", "resume", "threads"}},
+    {"Script", {"run_script"}},
+    {"Lập lịch", {"schedule"}},
+    {"Tiện ích", {"base", "bookmark", "color", "dance"}},
 };
 
 int help_command(Shell &shell, const std::vector<std::string> &) {

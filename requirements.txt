@@ -2,6 +2,7 @@
 # Cài bằng lệnh: sudo apt install -y $(grep -v '^#' requirements.txt)
 build-essential
 cmake
+python3
 gdb
 valgrind
 procps

@@ -17,6 +17,7 @@ public:
 
     termios raw = original_;
     raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VINTR] = _POSIX_VDISABLE;
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
     active_ = tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0;
@@ -92,6 +93,12 @@ bool read_key(const std::string &prompt,
         return false;
       }
       continue;
+    }
+
+    if (key == 3) {
+      text.clear();
+      std::cout << "^C\n" << std::flush;
+      return true;
     }
 
     if (key == 127 || key == 8) {

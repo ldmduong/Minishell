@@ -14,11 +14,17 @@ install(TARGETS minishell RUNTIME DESTINATION .)
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_executable(test_parser tests/unit/test_parser.cpp src/core/parser.cpp)
     target_include_directories(test_parser PRIVATE include)
     add_test(NAME parser COMMAND test_parser)
     add_test(
         NAME shell_integration
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/run_all.sh" "$<TARGET_FILE:minishell>"
+    )
+    add_test(
+        NAME ctrl_c
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_ctrl_c.py"
+                "$<TARGET_FILE:minishell>"
     )
 endif()

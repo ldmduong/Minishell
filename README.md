@@ -15,7 +15,7 @@ Một **shell mini** viết bằng C++17 cho môn **Hệ điều hành (ET4291)*
 - **Pipe** nhiều tầng: `cat file.txt | grep abc | wc -l`.
 - **Chuyển hướng** đầu vào và đầu ra: `<`, `>`, `>>`.
 - **Chạy nền** với `&`, tự thu hồi tiến trình đã xong.
-- **Dòng lệnh tương tác**: mũi tên ↑ ↓ để xem lịch sử, ← → để di chuyển con trỏ, `Delete`, `Home`, `End`, `Ctrl+D` để thoát.
+- **Dòng lệnh tương tác**: mũi tên ↑ ↓ để xem lịch sử, ← → để di chuyển con trỏ, `Delete`, `Home`, `End`; `Ctrl+C` hủy dòng đang gõ hoặc dừng lệnh hiện tại, `Ctrl+D` để thoát.
 - **Alias** tùy biến: `alias ll='ls -l'`.
 - **Biến môi trường**: `env`, `export`, `unset`.
 - **Quản lý tiến trình**: xem danh sách, gửi tín hiệu, tạm dừng và tiếp tục.
@@ -60,13 +60,13 @@ minishell$ exit
 - Linux hoặc **WSL2 Ubuntu** (khuyến nghị Ubuntu 24.04)
 - `g++` hỗ trợ C++17
 - `cmake` ≥ 3.16
-- `make`, `gdb`, `valgrind` (tùy chọn, để gỡ lỗi và kiểm tra bộ nhớ)
+- `make`, `python3` (test Ctrl+C), `gdb`, `valgrind` (tùy chọn, để gỡ lỗi và kiểm tra bộ nhớ)
 
 Cài đặt nhanh trên Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake gdb valgrind procps git
+sudo apt install -y build-essential cmake python3 gdb valgrind procps git
 ```
 
 ---

@@ -1,7 +1,9 @@
 #include "minishell/builtins/system/threads.h"
 
-#include <chrono>
 #include <dirent.h>
+
+#include <chrono>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -12,106 +14,100 @@
 #include "minishell/core/shell.h"
 
 namespace minishell::builtins {
-
 namespace {
 
-// Khóa để các luồng không in lẫn dòng với nhau
-std::mutex out_mutex;
+std::mutex output_mutex;
 
-// Kiểm tra chuỗi chỉ gồm chữ số (dùng cho PID)
-bool is_number(const std::string& s) {
-    return !s.empty() && s.find_first_not_of("0123456789") == std::string::npos;
+bool is_number(const std::string &value) {
+  return !value.empty() &&
+         value.find_first_not_of("0123456789") == std::string::npos;
 }
 
-// Đọc tên luồng từ /proc/<pid>/task/<tid>/comm
-std::string thread_name(const std::string& dir) {
-    std::ifstream f(dir + "/comm");
-    std::string name;
-    std::getline(f, name);
-    return name;
+std::string read_thread_name(const std::string &path) {
+  std::ifstream file(path + "/comm");
+  std::string name;
+  std::getline(file, name);
+  return name;
 }
 
-// Liệt kê các luồng của một tiến trình
-void list_threads(const std::string& pid) {
-    std::string dir = "/proc/" + pid + "/task";
+bool list_threads(const std::string &pid) {
+  std::string path = "/proc/" + pid + "/task";
+  DIR *directory = opendir(path.c_str());
+  if (directory == nullptr) {
+    std::cerr << "threads: không tìm thấy tiến trình " << pid << '\n';
+    return false;
+  }
 
-    DIR* d = opendir(dir.c_str());
-    if (!d) {
-        std::cerr << "threads: không tìm thấy tiến trình " << pid << "\n";
-        return;
-    }
+  std::cout << "TID        TÊN\n";
+  while (dirent *entry = readdir(directory)) {
+    std::string tid = entry->d_name;
+    if (tid == "." || tid == "..")
+      continue;
+    std::cout << tid << "    " << read_thread_name(path + "/" + tid) << '\n';
+  }
 
-    std::cout << "TID        TÊN\n";
-    while (dirent* e = readdir(d)) {
-        std::string tid = e->d_name;
-        if (tid == "." || tid == "..") continue;  // bỏ qua 2 mục ảo
-        std::cout << tid << "    " << thread_name(dir + "/" + tid) << "\n";
-    }
-    closedir(d);
+  closedir(directory);
+  return true;
 }
 
-// Công việc của mỗi luồng demo: in, ngủ, in
 void worker(int id) {
-    {
-        std::lock_guard<std::mutex> lock(out_mutex);
-        std::cout << "luồng " << id << " bắt đầu\n";
-    }
+  {
+    std::lock_guard<std::mutex> lock(output_mutex);
+    std::cout << "luồng " << id << " bắt đầu\n";
+  }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(200 * id));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200 * id));
 
-    {
-        std::lock_guard<std::mutex> lock(out_mutex);
-        std::cout << "luồng " << id << " kết thúc\n";
-    }
+  {
+    std::lock_guard<std::mutex> lock(output_mutex);
+    std::cout << "luồng " << id << " kết thúc\n";
+  }
 }
 
-// Tạo n luồng rồi đợi tất cả xong
-void run_demo(int n) {
-    std::vector<std::thread> threads;
-    for (int i = 1; i <= n; ++i) {
-        threads.emplace_back(worker, i);
-    }
-    for (auto& t : threads) {
-        t.join();
-    }
-    std::cout << "demo xong\n";
+void run_demo(int count) {
+  std::vector<std::thread> workers;
+  for (int id = 1; id <= count; ++id)
+    workers.emplace_back(worker, id);
+  for (std::thread &thread : workers)
+    thread.join();
+  std::cout << "demo xong\n";
 }
 
-int cmd_threads(Shell&, const std::vector<std::string>& args) {
-    // threads demo N
-    if (args.size() == 3 && args[1] == "demo") {
-        int n = 0;
-        try {
-            n = std::stoi(args[2]);
-        } catch (...) {
-            n = 0;
-        }
-        if (n < 1 || n > 16) {
-            std::cerr << "threads demo: N phải từ 1 đến 16\n";
-            return 1;
-        }
-        run_demo(n);
-        return 0;
+int threads_command(Shell &, const std::vector<std::string> &args) {
+  if (args.size() == 3 && args[1] == "demo") {
+    int count = 0;
+    try {
+      count = std::stoi(args[2]);
+    } catch (const std::exception &) {
+      count = 0;
     }
 
-    // threads PID
-    if (args.size() == 2) {
-        if (!is_number(args[1])) {
-            std::cerr << "threads: PID phải là số\n";
-            return 1;
-        }
-        list_threads(args[1]);
-        return 0;
+    if (count < 1 || count > 16) {
+      std::cerr << "threads demo: N phải từ 1 đến 16\n";
+      return 1;
     }
+    run_demo(count);
+    return 0;
+  }
 
-    std::cerr << "cách dùng: threads PID | threads demo N\n";
+  if (args.size() == 2 && is_number(args[1])) {
+    return list_threads(args[1]) ? 0 : 1;
+  }
+
+  if (args.size() == 2) {
+    std::cerr << "threads: PID phải là số\n";
     return 1;
+  }
+
+  std::cerr << "cách dùng: threads PID | threads demo N\n";
+  return 1;
 }
 
-}  // namespace
+} // namespace
 
-void register_threads(Registry& registry) {
-    registry.add("threads", cmd_threads, "threads PID | threads demo N  xem luồng / chạy demo");
+void register_threads(Registry &registry) {
+  registry.add("threads", threads_command,
+               "threads PID | threads demo N  xem luồng / chạy demo");
 }
 
-}  // namespace minishell::builtins
+} // namespace minishell::builtins

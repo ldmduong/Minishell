@@ -1,26 +1,25 @@
 #include "minishell/builtins/core/history.h"
 
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 
 #include "minishell/core/shell.h"
 
 namespace minishell::builtins {
-
 namespace {
 
-int cmd_history(Shell& shell, const std::vector<std::string>&) {
-    const auto& h = shell.history();
-    for (size_t i = 0; i < h.size(); ++i) {
-        std::cout << std::setw(4) << (i + 1) << "  " << h[i] << "\n";
-    }
-    return 0;
+int history_command(Shell &shell, const std::vector<std::string> &) {
+  const auto &history = shell.history();
+  for (size_t i = 0; i < history.size(); ++i) {
+    std::cout << std::setw(4) << i + 1 << "  " << history[i] << '\n';
+  }
+  return 0;
 }
 
-}  // namespace
+} // namespace
 
-void register_history(Registry& registry) {
-    registry.add("history", cmd_history, "history  in các lệnh đã nhập");
+void register_history(Registry &registry) {
+  registry.add("history", history_command, "history  in các lệnh đã nhập");
 }
 
-}  // namespace minishell::builtins
+} // namespace minishell::builtins

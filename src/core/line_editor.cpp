@@ -3,138 +3,158 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <iostream>
 
 namespace minishell {
-
 namespace {
 
-// Chuyển terminal sang chế độ raw khi còn trong phạm vi hàm, tự khôi phục khi thoát.
 class RawMode {
 public:
-    RawMode() : ok_(tcgetattr(STDIN_FILENO, &orig_) == 0) {
-        if (!ok_) return;
-        termios raw = orig_;
-        raw.c_lflag &= ~(ICANON | ECHO);
-        raw.c_cc[VMIN] = 1;
-        raw.c_cc[VTIME] = 0;
-        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
-    }
-    ~RawMode() {
-        if (ok_) tcsetattr(STDIN_FILENO, TCSANOW, &orig_);
-    }
-    bool ok() const { return ok_; }
+  RawMode() {
+    if (tcgetattr(STDIN_FILENO, &original_) < 0)
+      return;
+
+    termios raw = original_;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    active_ = tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0;
+  }
+
+  ~RawMode() {
+    if (active_)
+      tcsetattr(STDIN_FILENO, TCSANOW, &original_);
+  }
+
+  bool active() const { return active_; }
 
 private:
-    termios orig_{};
-    bool ok_;
+  termios original_{};
+  bool active_ = false;
 };
 
-// Đọc một byte. Trả về -1 nếu lỗi hoặc hết dữ liệu.
 int read_byte() {
-    unsigned char c;
-    ssize_t n = read(STDIN_FILENO, &c, 1);
-    return n == 1 ? c : -1;
+  unsigned char byte;
+  ssize_t count;
+  do {
+    count = read(STDIN_FILENO, &byte, 1);
+  } while (count < 0 && errno == EINTR);
+  return count == 1 ? byte : -1;
 }
 
-// Vẽ lại cả dòng rồi đưa con trỏ về đúng vị trí cur.
-void redraw(const std::string& prompt, const std::string& buf, size_t cur) {
-    std::cout << "\r\033[K" << prompt << buf;
-    size_t back = buf.size() - cur;  // số ô cần lùi từ cuối dòng về vị trí con trỏ
-    if (back > 0) std::cout << "\033[" << back << "D";
-    std::cout << std::flush;
+void redraw(const std::string &prompt, const std::string &text, size_t cursor) {
+  std::cout << '\r' << "\033[K" << prompt << text;
+  size_t distance_to_end = text.size() - cursor;
+  if (distance_to_end > 0)
+    std::cout << "\033[" << distance_to_end << 'D';
+  std::cout << std::flush;
 }
 
-}  // namespace
+void move_history(int direction, const std::vector<std::string> &history,
+                  size_t &position, std::string &draft, std::string &text,
+                  size_t &cursor) {
+  if (direction < 0 && position > 0) {
+    if (position == history.size())
+      draft = text;
+    text = history[--position];
+  } else if (direction > 0 && position < history.size()) {
+    ++position;
+    text = position == history.size() ? draft : history[position];
+  } else {
+    return;
+  }
 
-bool read_line(const std::string& prompt, const std::vector<std::string>& history, std::string& out) {
-    RawMode raw;
-    if (!raw.ok()) {  // stdin không phải terminal
-        std::cout << prompt << std::flush;
-        return static_cast<bool>(std::getline(std::cin, out));
+  cursor = text.size();
+}
+
+bool read_key(const std::string &prompt,
+              const std::vector<std::string> &history, std::string &text) {
+  size_t cursor = 0;
+  size_t history_position = history.size();
+  std::string draft;
+
+  while (true) {
+    int key = read_byte();
+    if (key < 0) {
+      std::cout << '\n';
+      return false;
     }
 
-    std::string buf;
-    size_t cur = 0;                // vị trí con trỏ trong buf
-    std::string draft;             // nội dung đang gõ dở khi bắt đầu duyệt lịch sử
-    size_t pos = history.size();   // history.size() nghĩa là dòng mới
+    if (key == '\r' || key == '\n') {
+      std::cout << '\n';
+      return true;
+    }
+
+    if (key == 4) {
+      if (text.empty()) {
+        std::cout << '\n';
+        return false;
+      }
+      continue;
+    }
+
+    if (key == 127 || key == 8) {
+      if (cursor > 0) {
+        text.erase(cursor - 1, 1);
+        --cursor;
+        redraw(prompt, text, cursor);
+      }
+      continue;
+    }
+
+    if (key == 27) {
+      int introducer = read_byte();
+      if (introducer != '[' && introducer != 'O')
+        continue;
+      int code = read_byte();
+
+      if (code == 'A' || code == 'B') {
+        move_history(code == 'A' ? -1 : 1, history, history_position, draft,
+                     text, cursor);
+        redraw(prompt, text, cursor);
+      } else if (code == 'C' && cursor < text.size()) {
+        ++cursor;
+        redraw(prompt, text, cursor);
+      } else if (code == 'D' && cursor > 0) {
+        --cursor;
+        redraw(prompt, text, cursor);
+      } else if (code == 'H') {
+        cursor = 0;
+        redraw(prompt, text, cursor);
+      } else if (code == 'F') {
+        cursor = text.size();
+        redraw(prompt, text, cursor);
+      } else if (code == '3') {
+        if (read_byte() == '~' && cursor < text.size()) {
+          text.erase(cursor, 1);
+          redraw(prompt, text, cursor);
+        }
+      }
+      continue;
+    }
+
+    if (key >= 32 && key < 127) {
+      text.insert(cursor, 1, static_cast<char>(key));
+      ++cursor;
+      redraw(prompt, text, cursor);
+    }
+  }
+}
+
+} // namespace
+
+bool read_line(const std::string &prompt,
+               const std::vector<std::string> &history, std::string &out) {
+  RawMode raw;
+  if (!raw.active()) {
     std::cout << prompt << std::flush;
+    return static_cast<bool>(std::getline(std::cin, out));
+  }
 
-    while (true) {
-        int c = read_byte();
-        if (c < 0) {
-            std::cout << "\n";
-            return false;
-        }
-
-        if (c == '\r' || c == '\n') {  // Enter
-            std::cout << "\n";
-            out = buf;
-            return true;
-        }
-
-        if (c == 4) {  // Ctrl+D: thoát khi dòng rỗng
-            if (buf.empty()) {
-                std::cout << "\n";
-                return false;
-            }
-            continue;
-        }
-
-        if (c == 127 || c == 8) {  // Backspace: xóa ký tự trước con trỏ
-            if (cur > 0) {
-                buf.erase(cur - 1, 1);
-                --cur;
-                redraw(prompt, buf, cur);
-            }
-            continue;
-        }
-
-        if (c == 27) {  // ESC: đầu chuỗi phím đặc biệt
-            int b = read_byte();
-            if (b != '[' && b != 'O') continue;
-            int k = read_byte();
-
-            if (k == 'A' && pos > 0) {  // ↑: lệnh cũ hơn
-                if (pos == history.size()) draft = buf;
-                buf = history[--pos];
-                cur = buf.size();
-                redraw(prompt, buf, cur);
-            } else if (k == 'B' && pos < history.size()) {  // ↓: lệnh mới hơn
-                ++pos;
-                buf = (pos == history.size()) ? draft : history[pos];
-                cur = buf.size();
-                redraw(prompt, buf, cur);
-            } else if (k == 'C' && cur < buf.size()) {  // →
-                ++cur;
-                redraw(prompt, buf, cur);
-            } else if (k == 'D' && cur > 0) {  // ←
-                --cur;
-                redraw(prompt, buf, cur);
-            } else if (k == 'H') {  // Home
-                cur = 0;
-                redraw(prompt, buf, cur);
-            } else if (k == 'F') {  // End
-                cur = buf.size();
-                redraw(prompt, buf, cur);
-            } else if (k >= '0' && k <= '9') {
-                // Delete là ESC [ 3 ~. Các phím số khác: bỏ qua đến '~'
-                int d = k;
-                while (d >= 0 && d != '~') d = read_byte();
-                if (k == '3' && cur < buf.size()) {  // Delete: xóa ký tự sau con trỏ
-                    buf.erase(cur, 1);
-                    redraw(prompt, buf, cur);
-                }
-            }
-            continue;
-        }
-
-        if (c >= 32 && c < 127) {  // chỉ nhận ký tự ASCII in được
-            buf.insert(cur, 1, static_cast<char>(c));
-            ++cur;
-            redraw(prompt, buf, cur);
-        }
-    }
+  out.clear();
+  std::cout << prompt << std::flush;
+  return read_key(prompt, history, out);
 }
 
-}  // namespace minishell
+} // namespace minishell

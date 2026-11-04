@@ -1,78 +1,71 @@
 #include "minishell/builtins/core/alias.h"
 
 #include <iostream>
-#include <string>
-#include <vector>
 
 #include "minishell/core/shell.h"
 
 namespace minishell::builtins {
-
 namespace {
 
-void print_alias(const std::string& name, const std::string& value) {
-    std::cout << "alias " << name << "='" << value << "'\n";
+void print_alias(const std::string &name, const std::string &value) {
+  std::cout << "alias " << name << "='" << value << "'\n";
 }
 
-int cmd_alias(Shell& shell, const std::vector<std::string>& args) {
-    auto& aliases = shell.aliases();
+int alias_command(Shell &shell, const std::vector<std::string> &args) {
+  auto &aliases = shell.aliases();
+  if (args.size() == 1) {
+    for (const auto &[name, value] : aliases)
+      print_alias(name, value);
+    return 0;
+  }
 
-    // Không có đối số: liệt kê tất cả alias
-    if (args.size() == 1) {
-        for (const auto& [name, value] : aliases) print_alias(name, value);
-        return 0;
+  int result = 0;
+  for (size_t i = 1; i < args.size(); ++i) {
+    size_t equals = args[i].find('=');
+    if (equals == std::string::npos) {
+      auto alias = aliases.find(args[i]);
+      if (alias == aliases.end()) {
+        std::cerr << "alias: không tồn tại: " << args[i] << '\n';
+        result = 1;
+      } else {
+        print_alias(alias->first, alias->second);
+      }
+      continue;
     }
 
-    int code = 0;
-    for (size_t i = 1; i < args.size(); ++i) {
-        const std::string& arg = args[i];
-        size_t eq = arg.find('=');
-
-        if (eq == std::string::npos) {
-            // Chỉ có tên: in alias đó
-            auto it = aliases.find(arg);
-            if (it == aliases.end()) {
-                std::cerr << "alias: không tồn tại: " << arg << "\n";
-                code = 1;
-            } else {
-                print_alias(it->first, it->second);
-            }
-            continue;
-        }
-
-        // TÊN=lệnh: đặt alias
-        std::string name = arg.substr(0, eq);
-        if (name.empty()) {
-            std::cerr << "alias: tên không hợp lệ\n";
-            code = 1;
-            continue;
-        }
-        aliases[name] = arg.substr(eq + 1);
+    std::string name = args[i].substr(0, equals);
+    if (name.empty()) {
+      std::cerr << "alias: tên không hợp lệ\n";
+      result = 1;
+      continue;
     }
-    return code;
+    aliases[name] = args[i].substr(equals + 1);
+  }
+  return result;
 }
 
-int cmd_unalias(Shell& shell, const std::vector<std::string>& args) {
-    if (args.size() < 2) {
-        std::cerr << "unalias: thiếu tên alias\n";
-        return 1;
-    }
+int unalias_command(Shell &shell, const std::vector<std::string> &args) {
+  if (args.size() < 2) {
+    std::cerr << "unalias: thiếu tên alias\n";
+    return 1;
+  }
 
-    int code = 0;
-    for (size_t i = 1; i < args.size(); ++i) {
-        if (shell.aliases().erase(args[i]) == 0) {
-            std::cerr << "unalias: không tồn tại: " << args[i] << "\n";
-            code = 1;
-        }
+  int result = 0;
+  for (size_t i = 1; i < args.size(); ++i) {
+    if (shell.aliases().erase(args[i]) == 0) {
+      std::cerr << "unalias: không tồn tại: " << args[i] << '\n';
+      result = 1;
     }
-    return code;
+  }
+  return result;
 }
 
-}  // namespace
+} // namespace
 
-void register_alias(Registry& registry) {
-    registry.add("alias", cmd_alias, "alias [TÊN='lệnh']  đặt hoặc xem alias");
-    registry.add("unalias", cmd_unalias, "unalias TÊN...  xóa alias");
+void register_alias(Registry &registry) {
+  registry.add("alias", alias_command,
+               "alias [TÊN='lệnh']  đặt hoặc xem alias");
+  registry.add("unalias", unalias_command, "unalias TÊN...  xóa alias");
 }
 
-}  // namespace minishell::builtins
+} // namespace minishell::builtins

@@ -20,7 +20,6 @@ Một **shell mini** viết bằng C++17 cho môn **Hệ điều hành (ET4291)*
 - **Biến môi trường**: `env`, `export`, `unset`.
 - **Quản lý tiến trình**: xem danh sách, gửi tín hiệu, tạm dừng và tiếp tục.
 - **Xem luồng** của một tiến trình và **chạy thử luồng** với `std::thread`.
-- **Lập lịch** lệnh chạy sau một khoảng thời gian.
 
 ---
 
@@ -36,7 +35,6 @@ Gõ `help` để xem danh sách đầy đủ theo nhóm.
 | **Môi trường & alias** | `env`, `export`, `unset`, `alias`, `unalias` | Biến môi trường và bí danh lệnh |
 | **Hệ thống** | `ram`, `cpu`, `uptime` | Thông tin RAM, CPU, thời gian hoạt động |
 | **Tiến trình & luồng** | `procs`, `kill [-SIG] PID`, `stop PID`, `resume PID`, `threads PID`, `threads demo N` | Quản lý tiến trình và luồng |
-| **Lập lịch** | `schedule SỐ_GIÂY LỆNH`, `schedule list`, `schedule cancel PID` | Chạy lệnh sau một khoảng thời gian |
 
 ---
 
@@ -50,7 +48,6 @@ minishell$ echo "xin chào" > a.txt
 minishell$ cat a.txt | wc -c
 minishell$ ram
 minishell$ threads demo 3
-minishell$ schedule 3 echo "hẹn 3 giây"
 minishell$ alias ll='ls -l'
 minishell$ history
 minishell$ exit
@@ -93,6 +90,12 @@ cmake --build build -j
 ./build/minishell
 ```
 
+Chạy kiểm thử:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
 Kiểm tra bộ nhớ với Valgrind:
 
 ```bash
@@ -121,7 +124,7 @@ minishell/
 │   ├── core/              # shell, parser, executor, line editor, registry
 │   └── builtins/
 │       ├── core/          # cd, pwd, exit, clear, help, history, file, env, alias...
-│       ├── scripting/     # schedule (và các lệnh script trong kế hoạch)
+│       ├── scripting/     # vị trí dành cho lệnh script trong kế hoạch
 │       ├── system/        # ram, cpu, uptime, procs, kill, threads
 │       └── extras/        # tiện ích mở rộng (kế hoạch)
 ├── src/                   # mã nguồn tương ứng với include/

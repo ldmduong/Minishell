@@ -1,7 +1,10 @@
-#pragma once    
+#pragma once
+
 #include <string>
-#include <vector> 
+#include <vector>
 
 namespace minishell {
-bool read_line(const std::string& prompt, const std::vector<std::string>& history, std::string& out);
+
+bool read_line(const std::string &prompt,
+               const std::vector<std::string> &history, std::string &out);
 }

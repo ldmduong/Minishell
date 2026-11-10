@@ -3,6 +3,8 @@
 #include <sys/stat.h>
 
 #include <charconv>
+#include <csignal>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -15,6 +17,17 @@
 
 namespace minishell::builtins {
 namespace {
+
+constexpr unsigned int max_script_depth = 32;
+constexpr int interrupted_status = 128 + SIGINT;
+volatile std::sig_atomic_t interrupted = 0;
+
+void interrupt_script(int) { interrupted = 1; }
+
+struct ScriptState {
+  unsigned int depth = 0;
+  bool failed = false;
+};
 
 bool parse_words(const std::string &line, std::vector<std::string> &words,
                  std::string &error) {
@@ -109,11 +122,11 @@ expand_words(const std::vector<std::string> &words,
   return expanded;
 }
 
-bool find_end(const std::vector<std::string> &lines, size_t start,
+bool find_end(const std::vector<std::string> &lines, size_t start, size_t finish,
               const std::string &open, const std::string &close, size_t &end,
               std::string &error) {
   int nested = 0;
-  for (size_t i = start + 1; i < lines.size(); ++i) {
+  for (size_t i = start + 1; i < finish; ++i) {
     std::vector<std::string> words;
     if (!parse_words(lines[i], words, error))
       return false;
@@ -134,10 +147,11 @@ bool find_end(const std::vector<std::string> &lines, size_t start,
 }
 
 bool find_if_parts(const std::vector<std::string> &lines, size_t start,
-                   size_t &otherwise, size_t &end, std::string &error) {
+                   size_t finish, size_t &otherwise, size_t &end,
+                   std::string &error) {
   int nested = 0;
-  otherwise = lines.size();
-  for (size_t i = start + 1; i < lines.size(); ++i) {
+  otherwise = finish;
+  for (size_t i = start + 1; i < finish; ++i) {
     std::vector<std::string> words;
     if (!parse_words(lines[i], words, error))
       return false;
@@ -152,7 +166,7 @@ bool find_if_parts(const std::vector<std::string> &lines, size_t start,
       }
       --nested;
     } else if (words[0] == "else" && nested == 0) {
-      if (otherwise != lines.size()) {
+      if (otherwise != finish) {
         error = "if chỉ được có một else";
         return false;
       }
@@ -248,7 +262,7 @@ bool valid_variable(const std::string &name) {
 
 class Script {
 public:
-  explicit Script(Shell &shell) : shell_(shell) {}
+  Script(Shell &shell, ScriptState &state) : shell_(shell), state_(state) {}
 
   int run(const std::vector<std::string> &lines,
           const std::vector<std::string> &arguments) {
@@ -259,29 +273,33 @@ private:
   int execute(const std::vector<std::string> &lines, size_t start,
               size_t finish, const std::vector<std::string> &arguments,
               unsigned int depth) {
-    if (depth > 32) {
+    if (depth > max_script_depth) {
       std::cerr << "run_script: vượt quá độ sâu lồng 32\n";
+      state_.failed = true;
       return 1;
     }
 
     int result = 0;
-    for (size_t i = start; i < finish && shell_.running();) {
-      std::vector<std::string> words;
+    for (size_t i = start; i < finish && shell_.running() &&
+                           !state_.failed && !interrupted &&
+                           result != interrupted_status;) {
+      Pipeline pipeline;
       std::string error;
-      if (!parse_words(lines[i], words, error)) {
+      if (!Parser::parse(lines[i], pipeline, error)) {
         report(i, error);
         return 2;
       }
-      if (words.empty()) {
+      if (pipeline.commands.empty()) {
         ++i;
         continue;
       }
 
+      const auto &words = pipeline.commands.front().args;
       const std::string &keyword = words[0];
       if (keyword == "if") {
-        size_t otherwise = lines.size();
+        size_t otherwise = finish;
         size_t end = 0;
-        if (!find_if_parts(lines, i, otherwise, end, error)) {
+        if (!find_if_parts(lines, i, finish, otherwise, end, error)) {
           report(i, error);
           return 2;
         }
@@ -294,16 +312,16 @@ private:
           return 2;
         }
         if (condition_result) {
-          size_t block_end = otherwise == lines.size() ? end : otherwise;
+          size_t block_end = otherwise == finish ? end : otherwise;
           result = execute(lines, i + 1, block_end, arguments, depth + 1);
-        } else if (otherwise != lines.size()) {
+        } else if (otherwise != finish) {
           result = execute(lines, otherwise + 1, end, arguments, depth + 1);
         }
         i = end + 1;
       } else if (keyword == "for") {
         size_t end = 0;
         if (words.size() < 4 || !valid_variable(words[1]) || words[2] != "in" ||
-            !find_end(lines, i, "for", "endfor", end, error)) {
+            !find_end(lines, i, finish, "for", "endfor", end, error)) {
           if (error.empty())
             error = "cách dùng: for TÊN in GIÁ_TRỊ...";
           report(i, error);
@@ -319,7 +337,8 @@ private:
         for (const std::string &value : values) {
           variables_[words[1]] = value;
           result = execute(lines, i + 1, end, arguments, depth + 1);
-          if (!shell_.running())
+          if (!shell_.running() || state_.failed || interrupted ||
+              result == interrupted_status)
             break;
         }
         if (had_old_value)
@@ -330,7 +349,7 @@ private:
       } else if (keyword == "function") {
         size_t end = 0;
         if (words.size() != 2 ||
-            !find_end(lines, i, "function", "endfunction", end, error)) {
+            !find_end(lines, i, finish, "function", "endfunction", end, error)) {
           if (error.empty())
             error = "cách dùng: function TÊN";
           report(i, error);
@@ -357,15 +376,10 @@ private:
         }
         std::vector<std::string> function_arguments(call.begin() + 2,
                                                     call.end());
-        result = execute(function->second, 0, function->second.size(),
-                         function_arguments, depth + 1);
+        const auto body = function->second;
+        result = execute(body, 0, body.size(), function_arguments, depth + 1);
         ++i;
       } else {
-        Pipeline pipeline;
-        if (!Parser::parse(lines[i], pipeline, error)) {
-          report(i, error);
-          return 2;
-        }
         for (Command &command : pipeline.commands) {
           command.args = expand_words(command.args, variables_, arguments);
           command.in_file = expand(command.in_file, variables_, arguments);
@@ -378,16 +392,24 @@ private:
     return result;
   }
 
-  void report(size_t line, const std::string &error) const {
+  void report(size_t line, const std::string &error) {
+    state_.failed = true;
     std::cerr << "run_script: dòng " << line + 1 << ": " << error << '\n';
   }
 
   Shell &shell_;
+  ScriptState &state_;
   std::map<std::string, std::string> variables_;
   std::map<std::string, std::vector<std::string>> functions_;
 };
 
 int run_script_command(Shell &shell, const std::vector<std::string> &args) {
+  static ScriptState state;
+  if (state.depth >= max_script_depth) {
+    std::cerr << "run_script: vượt quá độ sâu gọi tệp 32\n";
+    state.failed = true;
+    return 1;
+  }
   if (args.size() < 2) {
     std::cerr << "cách dùng: run_script TỆP [ĐỐI_SỐ]...\n";
     return 1;
@@ -406,10 +428,28 @@ int run_script_command(Shell &shell, const std::vector<std::string> &args) {
     std::cerr << "run_script: lỗi khi đọc " << args[1] << '\n';
     return 1;
   }
+  file.close();
 
   std::vector<std::string> arguments(args.begin() + 2, args.end());
-  Script script(shell);
-  return script.run(lines, arguments);
+  struct sigaction previous{};
+  if (state.depth == 0) {
+    state.failed = false;
+    interrupted = 0;
+    struct sigaction action{};
+    action.sa_handler = interrupt_script;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGINT, &action, &previous) != 0) {
+      std::perror("run_script: sigaction");
+      return 1;
+    }
+  }
+
+  ++state.depth;
+  Script script(shell, state);
+  int result = script.run(lines, arguments);
+  if (--state.depth == 0)
+    sigaction(SIGINT, &previous, nullptr);
+  return interrupted ? interrupted_status : result;
 }
 
 } // namespace

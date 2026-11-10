@@ -34,7 +34,7 @@ Gõ `help` để xem danh sách đầy đủ theo nhóm.
 |---|---|---|
 | **Điều hướng** | `cd [-]`, `pwd` | Đổi thư mục, `cd -` quay lại thư mục trước |
 | **Phiên làm việc** | `exit [mã]`, `clear`, `help`, `history` | Thoát, xóa màn hình, trợ giúp, xem lịch sử |
-| **Thư mục & tệp** | `mkdir [-p]`, `rmdir`, `touch`, `rm [-f]`, `cat` | Quản lý thư mục và tệp |
+| **Thư mục & tệp** | `mkdir [-p]`, `rmdir`, `touch`, `rm [-f] [--]`, `cat` | Quản lý thư mục và tệp. Dùng `rm -- TÊN` nếu tên bắt đầu bằng `-` |
 | **Môi trường & alias** | `env`, `export`, `unset`, `alias`, `unalias` | Biến môi trường và bí danh lệnh |
 | **Hệ thống** | `ram`, `cpu`, `uptime` | Thông tin RAM, CPU, thời gian hoạt động |
 | **Tiến trình & luồng** | `procs`, `kill [-SIG] PID`, `stop PID`, `resume PID`, `threads PID`, `threads demo N` | Quản lý tiến trình và luồng |
@@ -85,6 +85,8 @@ endif
 Chạy bằng `run_script demo.ms`. Script hỗ trợ so sánh `==`, `!=`, `-eq`,
 `-ne`, `-gt`, `-ge`, `-lt`, `-le` và kiểm tra tệp `-e`, `-f`, `-d`.
 Biến môi trường và đối số `$1`, `$2`, `$@` có thể dùng trong script.
+Script dừng khi gặp lỗi cú pháp hoặc khi nhấn Ctrl+C. Có thể gọi `run_script`
+từ script khác, tối đa 32 tệp đang chạy lồng nhau.
 
 `schedule` chỉ chạy **lệnh ngoài**, không chạy builtin, pipeline hoặc nền; ví dụ:
 `schedule 5 echo xong`, `schedule list`, `schedule cancel PID`.
@@ -126,6 +128,9 @@ cmake -S . -B build
 cmake --build build -j
 ./build/minishell
 ```
+
+Khi đọc lệnh từ pipe hoặc tệp, minishell bỏ prompt và trả mã thoát của lệnh
+cuối khi hết đầu vào. Lệnh `exit MÃ` dùng mã được chỉ định.
 
 Chạy kiểm thử:
 

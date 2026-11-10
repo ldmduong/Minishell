@@ -1,5 +1,7 @@
 #include "minishell/builtins/extras/bookmark.h"
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -54,25 +56,71 @@ bool load_bookmarks(std::map<std::string, std::string> &bookmarks,
 
 bool save_bookmarks(const std::map<std::string, std::string> &bookmarks,
                     const std::string &path) {
-  std::string temporary = path + ".tmp";
-  std::ofstream file(temporary, std::ios::trunc);
-  if (!file) {
-    std::cerr << "bookmark: không thể ghi " << temporary << '\n';
+  std::string temporary = path + ".XXXXXX";
+  int fd = mkstemp(temporary.data());
+  if (fd < 0) {
+    std::perror("bookmark: mkstemp");
     return false;
   }
 
-  for (const auto &[name, directory] : bookmarks)
-    file << name << '\t' << directory << '\n';
-  file.close();
+  FILE *file = fdopen(fd, "w");
   if (!file) {
+    std::perror("bookmark: fdopen");
+    close(fd);
+    unlink(temporary.c_str());
+    return false;
+  }
+
+  bool written = true;
+  for (const auto &[name, directory] : bookmarks) {
+    std::string line = name + '\t' + directory + '\n';
+    if (fwrite(line.data(), 1, line.size(), file) != line.size()) {
+      written = false;
+      break;
+    }
+  }
+  if (fclose(file) != 0 || !written) {
     std::cerr << "bookmark: lỗi khi ghi " << temporary << '\n';
+    unlink(temporary.c_str());
     return false;
   }
   if (rename(temporary.c_str(), path.c_str()) != 0) {
     std::perror("bookmark: rename");
+    unlink(temporary.c_str());
     return false;
   }
   return true;
+}
+
+bool update_bookmarks(const std::string &path, const std::string &name,
+                      const std::string &directory) {
+  // Lock a separate file because rename replaces the bookmarks inode.
+  int lock = open((path + ".lock").c_str(),
+                  O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
+  if (lock < 0) {
+    std::perror("bookmark: open lock");
+    return false;
+  }
+  if (flock(lock, LOCK_EX) != 0) {
+    std::perror("bookmark: flock");
+    close(lock);
+    return false;
+  }
+
+  std::map<std::string, std::string> bookmarks;
+  bool ok = load_bookmarks(bookmarks, path);
+  if (ok) {
+    if (!directory.empty()) {
+      bookmarks[name] = directory;
+    } else if (bookmarks.erase(name) == 0) {
+      std::cerr << "bookmark: không tồn tại: " << name << '\n';
+      ok = false;
+    }
+    if (ok)
+      ok = save_bookmarks(bookmarks, path);
+  }
+  close(lock);
+  return ok;
 }
 
 std::string current_directory() {
@@ -113,11 +161,7 @@ int bookmark_command(Shell &shell, const std::vector<std::string> &args) {
       std::cerr << "bookmark: chưa đặt HOME\n";
       return 1;
     }
-    std::map<std::string, std::string> bookmarks;
-    if (!load_bookmarks(bookmarks, path))
-      return 1;
-    bookmarks[args[2]] = directory;
-    return save_bookmarks(bookmarks, path) ? 0 : 1;
+    return update_bookmarks(path, args[2], directory) ? 0 : 1;
   }
 
   if (args[1] == "remove") {
@@ -130,14 +174,7 @@ int bookmark_command(Shell &shell, const std::vector<std::string> &args) {
       std::cerr << "bookmark: chưa đặt HOME\n";
       return 1;
     }
-    std::map<std::string, std::string> bookmarks;
-    if (!load_bookmarks(bookmarks, path))
-      return 1;
-    if (bookmarks.erase(args[2]) == 0) {
-      std::cerr << "bookmark: không tồn tại: " << args[2] << '\n';
-      return 1;
-    }
-    return save_bookmarks(bookmarks, path) ? 0 : 1;
+    return update_bookmarks(path, args[2], {}) ? 0 : 1;
   }
 
   if (args[1] == "go") {

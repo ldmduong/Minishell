@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -16,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "minishell/core/executor.h"
 #include "minishell/core/shell.h"
 
 namespace minishell::builtins {
@@ -30,16 +30,12 @@ int schedule_command(Shell &shell, const std::vector<std::string> &args) {
     return 1;
   }
 
+  Executor::reap_background();
   if (args.size() == 2 && args[1] == "list") {
     std::time_t now = std::time(nullptr);
-    for (auto job = scheduled.begin(); job != scheduled.end();) {
-      if (kill(job->first, 0) != 0 && errno == ESRCH) {
-        job = scheduled.erase(job);
-        continue;
-      }
-      std::cout << "PID " << job->first << " còn "
-                << (job->second > now ? job->second - now : 0) << " giây\n";
-      ++job;
+    for (const auto &[pid, deadline] : scheduled) {
+      std::cout << "PID " << pid << " còn "
+                << (deadline > now ? deadline - now : 0) << " giây\n";
     }
     return 0;
   }
@@ -124,6 +120,8 @@ int schedule_command(Shell &shell, const std::vector<std::string> &args) {
 }
 
 } // namespace
+
+void forget_scheduled(pid_t pid) { scheduled.erase(pid); }
 
 void register_scheduler(Registry &registry) {
   registry.add("schedule", schedule_command,

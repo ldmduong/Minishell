@@ -1,5 +1,7 @@
 #include "minishell/core/shell.h"
 
+#include <unistd.h>
+
 #include <csignal>
 #include <iostream>
 #include <utility>
@@ -95,19 +97,25 @@ int Shell::execute_pipeline(Pipeline pipeline) {
 }
 
 int Shell::run() {
+  const bool interactive = isatty(STDIN_FILENO);
+  int last_status = 0;
   std::string line;
   while (running_) {
     Executor::reap_background();
-    if (!read_line(prompt(), history_, line))
+    bool read = interactive ? read_line(prompt(), history_, line)
+                            : static_cast<bool>(std::getline(std::cin, line));
+    if (!read)
       break;
 
-    if (line.find_first_not_of(" \t") == std::string::npos)
+    size_t start = line.find_first_not_of(" \t");
+    if (start == std::string::npos)
       continue;
     history_.push_back(line);
-    execute_line(line);
+    if (line[start] != '#')
+      last_status = execute_line(line);
   }
 
-  return exit_code_;
+  return running_ && !interactive ? last_status : exit_code_;
 }
 
 } // namespace minishell

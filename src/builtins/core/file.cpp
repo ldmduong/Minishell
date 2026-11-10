@@ -15,6 +15,17 @@ namespace minishell::builtins {
 namespace {
 
 bool copy_file(int input, int output) {
+  struct stat source{}, destination{};
+  if (fstat(input, &source) != 0 || fstat(output, &destination) != 0) {
+    std::perror("cat: fstat");
+    return false;
+  }
+  if (S_ISREG(source.st_mode) && source.st_dev == destination.st_dev &&
+      source.st_ino == destination.st_ino) {
+    std::cerr << "cat: đầu vào và đầu ra là cùng một tệp\n";
+    return false;
+  }
+
   char buffer[4096];
   while (true) {
     ssize_t bytes_read = read(input, buffer, sizeof(buffer));
@@ -73,10 +84,16 @@ int touch_command(Shell &, const std::vector<std::string> &args) {
 
 int rm_command(Shell &, const std::vector<std::string> &args) {
   bool force = false;
+  bool options = true;
   std::vector<std::string> paths;
   for (size_t i = 1; i < args.size(); ++i) {
-    if (args[i] == "-f") {
+    if (options && args[i] == "--") {
+      options = false;
+    } else if (options && args[i] == "-f") {
       force = true;
+    } else if (options && args[i].size() > 1 && args[i].front() == '-') {
+      std::cerr << "rm: không hỗ trợ tùy chọn " << args[i] << '\n';
+      return 1;
     } else {
       paths.push_back(args[i]);
     }
@@ -91,23 +108,13 @@ int rm_command(Shell &, const std::vector<std::string> &args) {
 
   int result = 0;
   for (const std::string &path : paths) {
-    struct stat info{};
-    if (lstat(path.c_str(), &info) != 0) {
-      if (!force || errno != ENOENT) {
-        std::perror(("rm: " + path).c_str());
-        result = 1;
-      }
+    if (unlink(path.c_str()) == 0 || (force && errno == ENOENT))
       continue;
-    }
-    if (S_ISDIR(info.st_mode)) {
+    if (errno == EISDIR)
       std::cerr << "rm: " << path << ": là thư mục, hãy dùng rmdir\n";
-      result = 1;
-      continue;
-    }
-    if (unlink(path.c_str()) != 0) {
+    else
       std::perror(("rm: " + path).c_str());
-      result = 1;
-    }
+    result = 1;
   }
   return result;
 }
@@ -147,7 +154,7 @@ void register_file(Registry &registry) {
   registry.add("touch", touch_command,
                "touch file...  tạo file rỗng hoặc cập nhật thời gian");
   registry.add("rm", rm_command,
-               "rm [-f] file...  xóa file (không xóa thư mục)");
+               "rm [-f] [--] file...  xóa file (không xóa thư mục)");
   registry.add("cat", cat_command,
                "cat [file...]  in nội dung file hoặc đầu vào chuẩn");
 }

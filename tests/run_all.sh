@@ -64,7 +64,7 @@ INPUT
 [[ "$output" == *"loop=beta"* ]]
 [[ "$output" == *"condition=pass"* ]]
 [[ "$output" == *"function=hello world"* ]]
-[[ "$output" == *"script-output"* ]]
+[[ $(<"$work_dir/script-output.txt") == "script-output" ]]
 [[ ! -e "$work_dir/nested/dir/message.txt" ]]
 [[ ! -s "$work_dir/home/.minishell_bookmarks" ]]
 
@@ -74,3 +74,54 @@ schedule_output=$(
 )
 [[ "$schedule_output" == *"chỉ dùng như lệnh độc lập"* ]]
 [[ "$schedule_output" != *"should-not-run"* ]]
+
+cd "$work_dir"
+export HOME="$work_dir/home"
+
+check_run() {
+    local expected=$1 status=0
+    output=$(printf '%s\n' "$2" | "$minishell" 2>&1) || status=$?
+    if [[ "$status" != "$expected" ]]; then
+        printf 'Expected exit %s, got %s for %s\n%s\n' \
+            "$expected" "$status" "$2" "$output" >&2
+        return 1
+    fi
+}
+
+touch -- keep -i
+check_run 1 'rm keep -i'
+[[ -e keep && -e ./-i ]]
+check_run 0 'rm -- -i'
+[[ ! -e ./-i ]]
+
+printf 'keep me\n' > source.txt
+ln source.txt link.txt
+(
+    ulimit -f 128
+    check_run 1 'cat source.txt >> link.txt'
+)
+[[ $(<source.txt) == 'keep me' ]]
+
+ln -s "$work_dir/source.txt" "$HOME/.minishell_bookmarks.tmp"
+check_run 0 'bookmark add safe .'
+[[ $(<source.txt) == 'keep me' ]]
+[[ $(<"$HOME/.minishell_bookmarks") == $'safe\t.' ]]
+
+printf '%s\n' 'if 1 -eq 1' 'if invalid' 'endif' 'endif' \
+    'echo should-not-run' > syntax.ms
+check_run 2 'run_script syntax.ms'
+[[ "$output" != *should-not-run* ]]
+
+printf '%s\n' 'run_script recurse.ms' 'echo should-not-run' > recurse.ms
+check_run 1 'run_script recurse.ms'
+[[ "$output" == *'độ sâu gọi tệp'* && "$output" != *should-not-run* ]]
+
+printf '%s\n' 'function f' 'function f' 'echo updated' 'endfunction' \
+    'echo original' 'endfunction' 'call f' 'call f' > redefine.ms
+check_run 0 'run_script redefine.ms'
+[[ "$output" == $'original\nupdated' ]]
+
+check_run 1 $'false\n  # comment\n  '
+[[ -z "$output" ]]
+check_run 7 'exit 7'
+[[ -z "$output" ]]

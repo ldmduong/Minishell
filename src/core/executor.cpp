@@ -10,6 +10,7 @@
 #include <iostream>
 #include <vector>
 
+#include "minishell/builtins/scripting/scheduler.h"
 #include "minishell/core/shell.h"
 
 namespace minishell {
@@ -81,10 +82,13 @@ int wait_for(pid_t pid) {
 }
 
 int run_builtin_in_shell(Shell &shell, const Command &command) {
-  int saved_input = dup(STDIN_FILENO);
-  int saved_output = dup(STDOUT_FILENO);
+  if (command.in_file.empty() && command.out_file.empty())
+    return shell.registry().run(shell, command.args);
+
+  int saved_input = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 3);
+  int saved_output = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 3);
   if (saved_input < 0 || saved_output < 0) {
-    std::perror("dup");
+    std::perror("fcntl");
     if (saved_input >= 0)
       close(saved_input);
     if (saved_output >= 0)
@@ -175,9 +179,10 @@ int Executor::run(Shell &shell, const Pipeline &pipeline) {
       return 2;
   }
 
+  const Command &first = pipeline.commands.front();
   if (pipeline.commands.size() == 1 && !pipeline.background &&
-      shell.registry().has(pipeline.commands[0].args[0])) {
-    return run_builtin_in_shell(shell, pipeline.commands[0]);
+      first.args[0] != "cat" && shell.registry().has(first.args[0])) {
+    return run_builtin_in_shell(shell, first);
   }
 
   const size_t command_count = pipeline.commands.size();
@@ -223,6 +228,7 @@ void Executor::reap_background() {
   int status = 0;
   pid_t child;
   while ((child = waitpid(-1, &status, WNOHANG)) > 0) {
+    builtins::forget_scheduled(child);
     std::cout << "[xong] pid " << child << " (mã " << exit_status(status)
               << ")\n";
   }

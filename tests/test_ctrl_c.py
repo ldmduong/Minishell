@@ -1,10 +1,12 @@
 import os
+from pathlib import Path
 import pty
+import re
 import select
 import signal
 import sys
+from tempfile import TemporaryDirectory
 import time
-import re
 
 pending = {}
 
@@ -48,6 +50,23 @@ try:
     os.write(terminal, b"echo survived\n")
     read_until(terminal, b"survived\r\nminishell$ ")
 
+    os.write(terminal, b"cat\n")
+    read_until(terminal, b"cat\r\n")
+    time.sleep(0.1)
+    os.write(terminal, b"\x03")
+    read_until(terminal, b"minishell$ ")
+
+    with TemporaryDirectory() as directory:
+        script = Path(directory) / "interrupt.ms"
+        script.write_text("echo script-ready\nsleep 10\necho should-not-run\n")
+        os.write(terminal, f'run_script "{script}"\n'.encode())
+        read_until(terminal, b"script-ready\r\n")
+        time.sleep(0.1)
+        os.write(terminal, b"\x03")
+        output = read_until(terminal, b"minishell$ ")
+        if b"should-not-run" in output:
+            raise RuntimeError(f"script continued after Ctrl+C: {output!r}")
+
     os.write(terminal, b"dance 5\n")
     time.sleep(0.2)
     os.write(terminal, b"\x03")
@@ -74,13 +93,20 @@ try:
         raise RuntimeError(f"schedule cancel failed: {cancelled!r}")
 
     os.write(terminal, b"schedule 1 echo scheduled-ok\n")
-    read_until(terminal, b"[schedule] PID")
-    read_until(terminal, b"minishell$ ")
+    scheduled = read_until(terminal, b"[schedule] PID")
+    scheduled += read_until(terminal, b"minishell$ ")
+    match = re.search(rb"\[schedule\] PID (\d+)", scheduled)
+    if match is None:
+        raise RuntimeError(f"schedule did not report its PID: {scheduled!r}")
     os.write(terminal, b"sleep 2\n")
     completed = read_until(terminal, b"scheduled-ok\r\n", timeout=4)
     completed += read_until(terminal, b"minishell$ ", timeout=4)
     if b"scheduled-ok" not in completed:
         raise RuntimeError(f"scheduled command did not run: {completed!r}")
+
+    os.write(terminal, b"schedule cancel " + match.group(1) + b"\n")
+    read_until(terminal, "không tìm thấy lịch PID".encode())
+    read_until(terminal, b"minishell$ ")
 
     os.write(terminal, b"exit\n")
     os.waitpid(shell_pid, 0)

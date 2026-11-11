@@ -31,6 +31,10 @@ namespace minishell {
 
 Shell::Shell() {
   signal(SIGINT, SIG_IGN);
+  if (isatty(STDIN_FILENO)) {
+    signal(SIGTSTP, SIG_IGN);
+    signal(SIGTTOU, SIG_IGN);
+  }
 
   builtins::register_navigation(registry_);
   builtins::register_session(registry_);
@@ -81,8 +85,7 @@ int Shell::execute_pipeline(Pipeline pipeline) {
     }
 
     const Command &alias_command = replacement.commands.front();
-    if (!alias_command.in_file.empty() || !alias_command.out_file.empty() ||
-        alias_command.args.empty()) {
+    if (!alias_command.redirects.empty() || alias_command.args.empty()) {
       continue;
     }
 
@@ -102,9 +105,7 @@ int Shell::run() {
   std::string line;
   while (running_) {
     Executor::reap_background();
-    bool read = interactive ? read_line(prompt(), history_, line)
-                            : static_cast<bool>(std::getline(std::cin, line));
-    if (!read)
+    if (!read_line(interactive ? prompt() : std::string(), history_, line))
       break;
 
     size_t start = line.find_first_not_of(" \t");

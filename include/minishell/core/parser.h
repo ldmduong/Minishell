@@ -1,15 +1,21 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace minishell {
 
+enum class RedirectMode { read, write, append };
+
+struct Redirect {
+  RedirectMode mode;
+  std::string path;
+};
+
 struct Command {
   std::vector<std::string> args;
-  std::string in_file;
-  std::string out_file;
-  bool append = false;
+  std::vector<Redirect> redirects;
 };
 
 struct Pipeline {
@@ -19,7 +25,11 @@ struct Pipeline {
 
 class Parser {
 public:
-  static bool parse(const std::string &line, Pipeline &out, std::string &error);
+  using ExpandWord = std::function<std::string(const std::string &)>;
+
+  static bool parse(const std::string &line, Pipeline &out, std::string &error,
+                    const ExpandWord &expand = {},
+                    std::vector<std::string> *literal_words = nullptr);
 };
 
 } // namespace minishell

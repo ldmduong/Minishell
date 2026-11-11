@@ -72,6 +72,19 @@ try:
     os.write(terminal, b"\x03")
     read_until(terminal, b"minishell$ ", timeout=3)
 
+    os.write(terminal, b"sleep 0.2 &\n")
+    read_until(terminal, b"[xong] pid ")
+    read_until(terminal, b"minishell$ ")
+
+    os.write(terminal, b"sh -c 'kill -STOP $$; echo resumed'\n")
+    read_until(terminal, "[dừng] pid ".encode())
+    stopped_pid = read_until(terminal, b"\r\n").strip()
+    read_until(terminal, b"minishell$ ")
+    os.write(terminal, b"resume " + stopped_pid + b"\n")
+    read_until(terminal, b"resumed\r\n")
+    read_until(terminal, b"[xong] pid " + stopped_pid)
+    read_until(terminal, b"minishell$ ")
+
     os.write(terminal, b"schedule 30 echo cancelled\n")
     scheduled = read_until(terminal, b"[schedule] PID")
     scheduled += read_until(terminal, b"minishell$ ")

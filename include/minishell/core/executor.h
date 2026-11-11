@@ -11,7 +11,7 @@ public:
     static int run(Shell& shell, const Pipeline& pipeline);
 
     // Thu dọn các tiến trình nền đã kết thúc.
-    static void reap_background();
+    static bool reap_background(bool at_prompt = false);
 };
 
 }  // namespace minishell

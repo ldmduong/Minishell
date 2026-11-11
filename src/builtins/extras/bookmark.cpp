@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "minishell/core/shell.h"
+#include "minishell/builtins/core/navigation.h"
 
 namespace minishell::builtins {
 namespace {
@@ -123,12 +123,6 @@ bool update_bookmarks(const std::string &path, const std::string &name,
   return ok;
 }
 
-std::string current_directory() {
-  char path[4096];
-  return getcwd(path, sizeof(path)) == nullptr ? std::string()
-                                               : std::string(path);
-}
-
 int bookmark_command(Shell &shell, const std::vector<std::string> &args) {
   if (args.size() == 1 || args[1] == "list") {
     std::string path = bookmark_file();
@@ -196,13 +190,7 @@ int bookmark_command(Shell &shell, const std::vector<std::string> &args) {
       return 1;
     }
 
-    std::string old_directory = current_directory();
-    if (chdir(bookmark->second.c_str()) != 0) {
-      std::perror(("bookmark: " + bookmark->second).c_str());
-      return 1;
-    }
-    shell.prev_dir = old_directory;
-    return 0;
+    return change_directory(shell, bookmark->second, "bookmark");
   }
 
   std::cerr << "cách dùng: bookmark [list | add TÊN [THƯ_MỤC] | go TÊN | "

@@ -1,6 +1,7 @@
 #include "minishell/core/parser.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace minishell {
@@ -8,18 +9,31 @@ namespace {
 
 struct Token {
   std::string text;
-  bool is_operator;
+  std::string expanded;
+  bool is_operator = false;
 };
 
 bool tokenize(const std::string &line, std::vector<Token> &tokens,
-              std::string &error) {
-  std::string word;
+              std::string &error, const Parser::ExpandWord &expand) {
+  Token word;
+  std::string fragment;
   bool in_word = false;
+  char quote = '\0';
+
+  auto add_fragment = [&](bool literal) {
+    if (fragment.empty())
+      return;
+    word.text += fragment;
+    if (expand)
+      word.expanded += literal ? fragment : expand(fragment);
+    fragment.clear();
+  };
 
   auto add_word = [&]() {
     if (in_word) {
-      tokens.push_back({word, false});
-      word.clear();
+      add_fragment(false);
+      tokens.push_back(std::move(word));
+      word = Token{};
       in_word = false;
     }
   };
@@ -27,34 +41,33 @@ bool tokenize(const std::string &line, std::vector<Token> &tokens,
   for (size_t i = 0; i < line.size();) {
     char ch = line[i];
 
-    if (ch == ' ' || ch == '\t') {
+    if (quote != '\0' && ch == quote) {
+      add_fragment(quote == '\'');
+      quote = '\0';
+      ++i;
+    } else if (ch == '\\' && i + 1 < line.size() &&
+               (quote == '\0' ||
+                (quote == '"' && (line[i + 1] == '"' ||
+                                  line[i + 1] == '\\' ||
+                                  (expand && line[i + 1] == '$'))))) {
+      add_fragment(false);
+      fragment += line[i + 1];
+      add_fragment(true);
+      in_word = true;
+      i += 2;
+    } else if (quote != '\0') {
+      fragment += ch;
+      ++i;
+    } else if (ch == ' ' || ch == '\t') {
       add_word();
       ++i;
     } else if (ch == '#' && !in_word) {
       break;
     } else if (ch == '\'' || ch == '"') {
-      const char quote = ch;
+      add_fragment(false);
+      quote = ch;
       in_word = true;
       ++i;
-
-      while (i < line.size() && line[i] != quote) {
-        if (quote == '"' && line[i] == '\\' && i + 1 < line.size() &&
-            (line[i + 1] == '"' || line[i + 1] == '\\')) {
-          ++i;
-        }
-        word += line[i++];
-      }
-
-      if (i == line.size()) {
-        error = quote == '\'' ? "thiếu dấu nháy đơn đóng"
-                              : "thiếu dấu nháy kép đóng";
-        return false;
-      }
-      ++i;
-    } else if (ch == '\\' && i + 1 < line.size()) {
-      in_word = true;
-      word += line[i + 1];
-      i += 2;
     } else if (ch == '|' || ch == '<' || ch == '&' || ch == '>') {
       add_word();
 
@@ -64,26 +77,35 @@ bool tokenize(const std::string &line, std::vector<Token> &tokens,
         op = ">>";
         ++i;
       }
-      tokens.push_back({op, true});
+      tokens.push_back({op, {}, true});
     } else {
       in_word = true;
-      word += ch;
+      fragment += ch;
       ++i;
     }
   }
 
+  if (quote != '\0') {
+    error = quote == '\'' ? "thiếu dấu nháy đơn đóng"
+                          : "thiếu dấu nháy kép đóng";
+    return false;
+  }
   add_word();
   return true;
 }
 
 } // namespace
 
-bool Parser::parse(const std::string &line, Pipeline &out, std::string &error) {
+bool Parser::parse(const std::string &line, Pipeline &out, std::string &error,
+                   const ExpandWord &expand,
+                   std::vector<std::string> *literal_words) {
   out = Pipeline{};
   error.clear();
+  if (literal_words)
+    literal_words->clear();
 
   std::vector<Token> tokens;
-  if (!tokenize(line, tokens, error))
+  if (!tokenize(line, tokens, error, expand))
     return false;
   if (tokens.empty())
     return true;
@@ -93,7 +115,9 @@ bool Parser::parse(const std::string &line, Pipeline &out, std::string &error) {
     const Token &token = tokens[i];
 
     if (!token.is_operator) {
-      command.args.push_back(token.text);
+      if (literal_words && out.commands.empty())
+        literal_words->push_back(token.text);
+      command.args.push_back(expand ? token.expanded : token.text);
       continue;
     }
 
@@ -121,13 +145,11 @@ bool Parser::parse(const std::string &line, Pipeline &out, std::string &error) {
       return false;
     }
 
-    const std::string &file = tokens[++i].text;
-    if (token.text == "<") {
-      command.in_file = file;
-    } else {
-      command.out_file = file;
-      command.append = token.text == ">>";
-    }
+    const Token &file = tokens[++i];
+    RedirectMode mode = RedirectMode::read;
+    if (token.text != "<")
+      mode = token.text == ">>" ? RedirectMode::append : RedirectMode::write;
+    command.redirects.push_back({mode, expand ? file.expanded : file.text});
   }
 
   if (command.args.empty()) {

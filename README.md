@@ -13,8 +13,8 @@ Một **shell mini** viết bằng C++17 cho môn **Hệ điều hành (ET4291)*
 
 - **Chạy lệnh ngoài** qua `fork` + `execvp`, ví dụ `ls`, `grep`, `echo`.
 - **Pipe** nhiều tầng: `cat file.txt | grep abc | wc -l`.
-- **Chuyển hướng** đầu vào và đầu ra: `<`, `>`, `>>`.
-- **Chạy nền** với `&`, tự thu hồi tiến trình đã xong.
+- **Chuyển hướng** đầu vào và đầu ra: `<`, `>`, `>>`. Các chuyển hướng được áp dụng từ trái sang phải.
+- **Chạy nền** với `&`, tự thu hồi tiến trình đã xong ngay cả khi chờ nhập lệnh.
 - **Dòng lệnh tương tác**: mũi tên ↑ ↓ để xem lịch sử, ← → để di chuyển con trỏ, `Delete`, `Home`, `End`; `Ctrl+C` hủy dòng đang gõ hoặc dừng lệnh hiện tại, `Ctrl+D` để thoát.
 - **Alias** tùy biến: `alias ll='ls -l'`.
 - **Biến môi trường**: `env`, `export`, `unset`.
@@ -85,6 +85,8 @@ endif
 Chạy bằng `run_script demo.ms`. Script hỗ trợ so sánh `==`, `!=`, `-eq`,
 `-ne`, `-gt`, `-ge`, `-lt`, `-le` và kiểm tra tệp `-e`, `-f`, `-d`.
 Biến môi trường và đối số `$1`, `$2`, `$@` có thể dùng trong script.
+Nháy đơn và dấu `$` có `\` phía trước giữ nguyên giá trị. Các dòng điều khiển
+như `if`, `for` và `call` báo lỗi nếu có pipe, chuyển hướng hoặc chạy nền.
 Script dừng khi gặp lỗi cú pháp hoặc khi nhấn Ctrl+C. Có thể gọi `run_script`
 từ script khác, tối đa 32 tệp đang chạy lồng nhau.
 
@@ -182,7 +184,7 @@ minishell/
 - **Registry**: mỗi lệnh tích hợp được đăng ký bằng tên, hàm xử lý và chuỗi trợ giúp. Shell không cần biết chi tiết của từng lệnh.
 - **Executor**: lệnh đơn chạy trong shell khi cần, còn pipeline và lệnh ngoài chạy trong tiến trình con qua `fork`, `pipe`, `dup2` và `execvp`.
 - **Script**: chạy tuần tự các dòng trong tệp; `if`, `for` và hàm được xử lý trong `run_script`.
-- **Tín hiệu**: shell bỏ qua `SIGINT`, còn tiến trình con khôi phục hành vi mặc định để Ctrl+C chỉ dừng lệnh đang chạy.
+- **Tín hiệu**: pipeline foreground có nhóm tiến trình riêng khi chạy tương tác. Ctrl+C ngắt lệnh và Ctrl+Z trả quyền điều khiển terminal về minishell.
 - **Line editor**: chuyển terminal sang chế độ raw bằng `termios`, đọc từng byte để xử lý mũi tên và chỉnh sửa dòng.
 - **Thông tin hệ thống**: đọc trực tiếp từ `/proc` (`meminfo`, `cpuinfo`, `uptime`, `<pid>/stat`, `<pid>/task`).
 

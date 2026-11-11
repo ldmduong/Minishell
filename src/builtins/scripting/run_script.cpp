@@ -29,6 +29,20 @@ struct ScriptState {
   bool failed = false;
 };
 
+bool valid_control_line(const Pipeline &pipeline, const std::string &keyword,
+                        std::string &error) {
+  if (pipeline.commands.size() == 1 && !pipeline.background &&
+      pipeline.commands.front().redirects.empty())
+    return true;
+  if (keyword == "if" || keyword == "else" || keyword == "endif" ||
+      keyword == "for" || keyword == "endfor" || keyword == "function" ||
+      keyword == "endfunction" || keyword == "call") {
+    error = "'" + keyword + "' không hỗ trợ pipe, chuyển hướng hoặc chạy nền";
+    return false;
+  }
+  return true;
+}
+
 bool parse_words(const std::string &line, std::vector<std::string> &words,
                  std::string &error) {
   Pipeline pipeline;
@@ -36,7 +50,7 @@ bool parse_words(const std::string &line, std::vector<std::string> &words,
     return false;
   words = pipeline.commands.empty() ? std::vector<std::string>{}
                                     : pipeline.commands[0].args;
-  return true;
+  return words.empty() || valid_control_line(pipeline, words[0], error);
 }
 
 std::string value_of(const std::string &name,
@@ -109,17 +123,6 @@ std::string expand(const std::string &text,
     }
   }
   return result;
-}
-
-std::vector<std::string>
-expand_words(const std::vector<std::string> &words,
-             const std::map<std::string, std::string> &variables,
-             const std::vector<std::string> &arguments) {
-  std::vector<std::string> expanded;
-  expanded.reserve(words.size());
-  for (const std::string &word : words)
-    expanded.push_back(expand(word, variables, arguments));
-  return expanded;
 }
 
 bool find_end(const std::vector<std::string> &lines, size_t start, size_t finish,
@@ -285,7 +288,11 @@ private:
                            result != interrupted_status;) {
       Pipeline pipeline;
       std::string error;
-      if (!Parser::parse(lines[i], pipeline, error)) {
+      std::vector<std::string> literal_words;
+      auto expand_word = [&](const std::string &word) {
+        return expand(word, variables_, arguments);
+      };
+      if (!Parser::parse(lines[i], pipeline, error, expand_word, &literal_words)) {
         report(i, error);
         return 2;
       }
@@ -295,7 +302,11 @@ private:
       }
 
       const auto &words = pipeline.commands.front().args;
-      const std::string &keyword = words[0];
+      const std::string &keyword = literal_words[0];
+      if (!valid_control_line(pipeline, keyword, error)) {
+        report(i, error);
+        return 2;
+      }
       if (keyword == "if") {
         size_t otherwise = finish;
         size_t end = 0;
@@ -303,9 +314,7 @@ private:
           report(i, error);
           return 2;
         }
-        std::vector<std::string> condition = expand_words(
-            std::vector<std::string>(words.begin() + 1, words.end()),
-            variables_, arguments);
+        std::vector<std::string> condition(words.begin() + 1, words.end());
         bool condition_result = false;
         if (!evaluate(condition, condition_result, error)) {
           report(i, error);
@@ -320,31 +329,30 @@ private:
         i = end + 1;
       } else if (keyword == "for") {
         size_t end = 0;
-        if (words.size() < 4 || !valid_variable(words[1]) || words[2] != "in" ||
+        if (words.size() < 4 || !valid_variable(literal_words[1]) ||
+            literal_words[2] != "in" ||
             !find_end(lines, i, finish, "for", "endfor", end, error)) {
           if (error.empty())
             error = "cách dùng: for TÊN in GIÁ_TRỊ...";
           report(i, error);
           return 2;
         }
-        std::vector<std::string> values = expand_words(
-            std::vector<std::string>(words.begin() + 3, words.end()),
-            variables_, arguments);
-        auto old_value = variables_.find(words[1]);
+        const std::string &name = literal_words[1];
+        auto old_value = variables_.find(name);
         bool had_old_value = old_value != variables_.end();
         std::string saved_value =
             had_old_value ? old_value->second : std::string();
-        for (const std::string &value : values) {
-          variables_[words[1]] = value;
+        for (size_t value = 3; value < words.size(); ++value) {
+          variables_[name] = words[value];
           result = execute(lines, i + 1, end, arguments, depth + 1);
           if (!shell_.running() || state_.failed || interrupted ||
               result == interrupted_status)
             break;
         }
         if (had_old_value)
-          variables_[words[1]] = saved_value;
+          variables_[name] = saved_value;
         else
-          variables_.erase(words[1]);
+          variables_.erase(name);
         i = end + 1;
       } else if (keyword == "function") {
         size_t end = 0;
@@ -355,36 +363,28 @@ private:
           report(i, error);
           return 2;
         }
-        functions_[words[1]] = std::vector<std::string>(lines.begin() + i + 1,
-                                                        lines.begin() + end);
+        functions_[literal_words[1]] =
+            std::vector<std::string>(lines.begin() + i + 1, lines.begin() + end);
         i = end + 1;
       } else if (keyword == "else" || keyword == "endif" ||
                  keyword == "endfor" || keyword == "endfunction") {
         report(i, "khối '" + keyword + "' không có lệnh mở tương ứng");
         return 2;
       } else if (keyword == "call") {
-        std::vector<std::string> call =
-            expand_words(words, variables_, arguments);
-        if (call.size() < 2) {
+        if (words.size() < 2) {
           report(i, "cách dùng: call TÊN_HÀM [ĐỐI_SỐ]...");
           return 2;
         }
-        auto function = functions_.find(call[1]);
+        auto function = functions_.find(words[1]);
         if (function == functions_.end()) {
-          report(i, "không tìm thấy hàm: " + call[1]);
+          report(i, "không tìm thấy hàm: " + words[1]);
           return 1;
         }
-        std::vector<std::string> function_arguments(call.begin() + 2,
-                                                    call.end());
+        std::vector<std::string> function_arguments(words.begin() + 2, words.end());
         const auto body = function->second;
         result = execute(body, 0, body.size(), function_arguments, depth + 1);
         ++i;
       } else {
-        for (Command &command : pipeline.commands) {
-          command.args = expand_words(command.args, variables_, arguments);
-          command.in_file = expand(command.in_file, variables_, arguments);
-          command.out_file = expand(command.out_file, variables_, arguments);
-        }
         result = shell_.execute_pipeline(std::move(pipeline));
         ++i;
       }

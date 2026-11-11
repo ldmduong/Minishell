@@ -24,10 +24,13 @@ int main() {
     return 3;
   }
   if (!pipeline.background || pipeline.commands.size() != 2 ||
-      pipeline.commands[0].in_file != "input" ||
+      pipeline.commands[0].redirects.size() != 1 ||
+      pipeline.commands[0].redirects[0].mode != minishell::RedirectMode::read ||
+      pipeline.commands[0].redirects[0].path != "input" ||
       pipeline.commands[1].args[0] != "grep" ||
-      pipeline.commands[1].out_file != "output" ||
-      !pipeline.commands[1].append) {
+      pipeline.commands[1].redirects.size() != 1 ||
+      pipeline.commands[1].redirects[0].mode != minishell::RedirectMode::append ||
+      pipeline.commands[1].redirects[0].path != "output") {
     return 4;
   }
 

@@ -9,13 +9,36 @@
 #include "minishell/core/shell.h"
 
 namespace minishell::builtins {
-namespace {
 
 std::string current_directory() {
   char path[4096];
   return getcwd(path, sizeof(path)) == nullptr ? std::string()
                                                : std::string(path);
 }
+
+int change_directory(Shell &shell, const std::string &target,
+                     const char *command, bool print) {
+  std::string old_directory = current_directory();
+  if (chdir(target.c_str()) != 0) {
+    std::perror((std::string(command) + ": " + target).c_str());
+    return 1;
+  }
+
+  shell.prev_dir = old_directory;
+  const std::string directory = current_directory();
+  int old_status = old_directory.empty() ? unsetenv("OLDPWD")
+                                         : setenv("OLDPWD", old_directory.c_str(), 1);
+  int status = directory.empty() ? unsetenv("PWD") : setenv("PWD", directory.c_str(), 1);
+  if (status != 0 || old_status != 0) {
+    std::perror(command);
+    return 1;
+  }
+  if (print)
+    std::cout << directory << '\n';
+  return 0;
+}
+
+namespace {
 
 int cd_command(Shell &shell, const std::vector<std::string> &args) {
   if (args.size() > 2) {
@@ -43,16 +66,7 @@ int cd_command(Shell &shell, const std::vector<std::string> &args) {
     target = args[1];
   }
 
-  std::string old_directory = current_directory();
-  if (chdir(target.c_str()) != 0) {
-    std::perror(("cd: " + target).c_str());
-    return 1;
-  }
-
-  shell.prev_dir = old_directory;
-  if (print_new_directory)
-    std::cout << current_directory() << '\n';
-  return 0;
+  return change_directory(shell, target, "cd", print_new_directory);
 }
 
 int pwd_command(Shell &, const std::vector<std::string> &) {

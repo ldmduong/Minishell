@@ -125,3 +125,44 @@ check_run 1 $'false\n  # comment\n  '
 [[ -z "$output" ]]
 check_run 7 'exit 7'
 [[ -z "$output" ]]
+
+check_run 0 $'head -c 4\nabc\necho done'
+[[ "$output" == $'abc\ndone' ]]
+
+check_run 1 'echo should-not-run > ""'
+[[ "$output" != *should-not-run* ]]
+check_run 0 'echo last > first.txt > last.txt'
+[[ -f first.txt && ! -s first.txt && $(<last.txt) == last ]]
+check_run 1 'echo x > created.txt < missing.txt'
+[[ -f created.txt ]]
+check_run 1 'pwd > /dev/full'
+[[ "$output" == *'lỗi ghi đầu ra'* ]]
+check_run 0 $'pwd > /dev/full\npwd'
+[[ "$output" == *$'\n'"$work_dir" ]]
+
+check_run 0 $'cd /\nprintenv PWD\nprintenv OLDPWD'
+[[ "$output" == '/'$'\n'"$work_dir" ]]
+check_run 0 $'bookmark add root /\nbookmark go root\nprintenv PWD'
+[[ "$output" == '/' ]]
+
+cat > quotes.ms <<'SCRIPT'
+printf '%s\n' '$1' "$1" "\$1" \$1
+SCRIPT
+check_run 0 'run_script quotes.ms "two words"'
+[[ "$output" == $'$1\ntwo words\n$1\n$1' ]]
+printf '%s\n' 'echo should-not-run > "$1"' > empty-redirect.ms
+check_run 1 'run_script empty-redirect.ms ""'
+[[ "$output" != *should-not-run* ]]
+printf '%s\n' 'if 1 -eq 1 | cat' 'echo should-not-run' 'endif' > invalid-header.ms
+check_run 2 'run_script invalid-header.ms'
+[[ "$output" != *should-not-run* ]]
+
+(
+    ulimit -n 64
+    pipeline='printf x | '
+    for ((i = 0; i < 35; ++i)); do
+        pipeline+='cat | '
+    done
+    check_run 0 "$pipeline"'wc -c'
+    [[ "$output" == 1 ]]
+)
